@@ -22,14 +22,14 @@ jobs:
         uses: docker/setup-qemu-action@v1      
       - name: Build and upload manylinux wheels
         if: ${{ matrix.arch == 'x86_64' }}
-        uses:  mozman/manylinux-wheel-builder@master
+        uses:  mozman/manylinux-wheel-builder@v1
         with:
           python-versions: "3.7, 3.8, 3.9, 3.10"
         # if true then github actions won't stop even if build for this job fails
         continue-on-error: true
       - name: Build and upload manylinux wheels
         if: ${{ matrix.arch == 'aarch64' }}
-        uses:  mozman/manylinux-wheel-builder@master-manylinux2014_aarch64 
+        uses:  mozman/manylinux-wheel-builder@v1-manylinux2014_aarch64 
         with:
           python-versions: "3.7, 3.8, 3.9, 3.10"
         # if true then github actions won't stop even if build for this job fails
