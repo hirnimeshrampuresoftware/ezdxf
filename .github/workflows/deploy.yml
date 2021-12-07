@@ -29,7 +29,7 @@ jobs:
         continue-on-error: true
       - name: Build and upload manylinux wheels
         if: ${{ matrix.arch == 'aarch64' }}
-        uses:  hirnimeshrampuresoftware/manylinux-wheel-builder@master
+        uses:  mozman/manylinux-wheel-builder@master-manylinux2014_aarch64 
         with:
           python-versions: "3.7, 3.8, 3.9, 3.10"
         # if true then github actions won't stop even if build for this job fails
