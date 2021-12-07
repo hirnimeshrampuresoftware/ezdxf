@@ -9,17 +9,31 @@ jobs:
   # Build and deploy manylinux wheel
   Linux-build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]    
     env:
       TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
       TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
+      - name: Set up QEMU
+        if: ${{ matrix.arch == 'aarch64' }}
+        uses: docker/setup-qemu-action@v1      
       - name: Build and upload manylinux wheels
+        if: ${{ matrix.arch == 'x86_64' }}
         uses:  mozman/manylinux-wheel-builder@master
         with:
           python-versions: "3.7, 3.8, 3.9, 3.10"
         # if true then github actions won't stop even if build for this job fails
         continue-on-error: true
+      - name: Build and upload manylinux wheels
+        if: ${{ matrix.arch == 'aarch64' }}
+        uses:  hirnimeshrampuresoftware/manylinux-wheel-builder@master
+        with:
+          python-versions: "3.7, 3.8, 3.9, 3.10"
+        # if true then github actions won't stop even if build for this job fails
+        continue-on-error: true        
 
   # Deploy source distribution
   Source-dist:
