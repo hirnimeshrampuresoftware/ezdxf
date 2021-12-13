@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Set up QEMU
-        if: ${{ matrix.arch == 'manylinux2014_aarch64' }}
+        if: ${{ matrix.platform == 'manylinux2014_aarch64' }}
         uses: docker/setup-qemu-action@v1      
       - name: Build and upload manylinux wheels
         if: ${{ matrix.platform == 'manylinux2010_x86_64' }}
