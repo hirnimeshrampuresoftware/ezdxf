@@ -27,11 +27,12 @@ jobs:
           python-versions: "3.7, 3.8, 3.9, 3.10"
         # if true then github actions won't stop even if build for this job fails
         continue-on-error: true
-      - name: Build and upload manylinux wheels
+      - name: Build and upload aarch64 manylinux wheels
         if: ${{ matrix.arch == 'aarch64' }}
         uses: RalfG/python-wheels-manylinux-build@v0.4.0-manylinux2014_aarch64
         with:
           python-versions: 'cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310'
+          build-requirements: 'wheel cython' 
         # if true then github actions won't stop even if build for this job fails
         continue-on-error: true        
 
