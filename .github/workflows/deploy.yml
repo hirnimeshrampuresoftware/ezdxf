@@ -42,7 +42,7 @@ jobs:
           pwd
           cd dist
           ls
-          twine upload dist/*-manylinux*.whl
+          twine upload dist/*manylinux2014_aarch64.whl
 
   # Deploy source distribution
   Source-dist:
