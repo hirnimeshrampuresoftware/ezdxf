@@ -84,5 +84,8 @@ jobs:
       - name: Upload binary wheels
         run: |
           pip install twine
-          twine upload dist/*
+          pwd
+          cd dist
+          ls
+          twine upload dist/*-manylinux*.whl
         continue-on-error: true
