@@ -6,14 +6,17 @@ import logging
 from ezdxf import colors
 from ezdxf.math import (
     Vec3,
+    Vec2,
     X_AXIS,
     Z_AXIS,
     fit_points_to_cad_cv,
     OCS,
+    is_point_left_of_line,
 )
 from ezdxf.entities import factory
 from ezdxf.proxygraphic import ProxyGraphic
 from ezdxf.render.arrows import ARROWS, arrow_length
+from ezdxf.tools.text_size import estimate_mtext_extents
 
 if TYPE_CHECKING:
     from ezdxf.document import Drawing
@@ -39,6 +42,10 @@ logger = logging.getLogger("ezdxf")
 # How to render MLEADER: https://atlight.github.io/formats/dxf-leader.html
 # DXF reference:
 # http://help.autodesk.com/view/OARX/2018/ENU/?guid=GUID-72D20B8C-0F5E-4993-BEB7-0FCF94F32BE0
+
+# AutoCAD and BricsCAD always (?) use values stored in the MULTILEADER
+# entity, even if the override flag isn't set!
+IGNORE_OVERRIDE_FLAGS = True
 
 OVERRIDE_FLAG = {
     "leader_type": 1 << 0,
@@ -69,8 +76,8 @@ OVERRIDE_FLAG = {
     "text_right_attachment_type": 1 << 25,
     "text_switch_alignment": 1 << 26,  # ??? not in MultiLeader/MLeaderStyle
     "text_attachment_direction": 1 << 27,  # this flag is not set by BricsCAD
-    "text_top_attachment_direction": 1 << 28,
-    "text_bottom_attachment_direction": 1 << 29,
+    "text_top_attachment_type": 1 << 28,
+    "text_bottom_attachment_type": 1 << 29,
 }
 
 
@@ -94,13 +101,13 @@ class MLeaderStyleOverride:
         )  # if False, what MTEXT content is used?
 
     def get(self, attrib_name: str) -> Any:
-        # Set MLEADERSTYLE value as default:
+        # Set MLEADERSTYLE value as default value:
         if attrib_name == "block_scale_vector":
             value = self._block_scale_vector
         else:
             value = self._style_dxf.get_default(attrib_name)
-        if self.is_overridden(attrib_name):
-            # Get overridden value from MLEADER
+        if IGNORE_OVERRIDE_FLAGS or self.is_overridden(attrib_name):
+            # Get overridden value from MULTILEADER:
             if attrib_name == "char_height":
                 value = self._context.char_height
             else:
@@ -187,7 +194,9 @@ def copy_mtext_data(
         dxf.true_color = true_color
     dxf.insert = mtext_data.insert
     assert mtext.doc is not None
-    mtext.dxf.style = get_text_style(mtext_data.style_handle, mtext.doc)
+    mtext.dxf.style = get_text_style(
+        mtext_data.style_handle, mtext.doc
+    ).dxf.name
     if not mtext_data.extrusion.isclose(Z_AXIS):
         dxf.extrusion = mtext_data.extrusion
     dxf.text_direction = mtext_data.text_direction
@@ -294,14 +303,47 @@ class RenderEngine:
             head.index: head.handle for head in mleader.arrow_heads
         }
         self.arrow_head_handle = self.style.get("arrow_head_handle")
-        # 0= horizontal; 1=vertical - override flag (27) is not set by BricsCAD!
-        self.has_horizontal_attachment = not bool(
-            mleader.dxf.text_attachment_direction
+        self.dxf_mtext_entity: Optional["MText"] = None
+        self._dxf_mtext_extents: Optional[Tuple[float, float]] = None
+        self.has_horizontal_attachment = bool(
+            self.style.get("text_attachment_direction")
+        )
+        self.left_attachment_type = self.style.get("text_left_attachment_type")
+        self.right_attachment_type = self.style.get(
+            "text_right_attachment_type"
+        )
+        self.top_attachment_type = self.style.get("text_top_attachment_type")
+        self.bottom_attachment_type = self.style.get(
+            "text_bottom_attachment_type"
         )
 
     @property
     def has_extrusion(self) -> bool:
         return self.ocs is not None
+
+    @property
+    def has_text_content(self) -> bool:
+        return self.context.mtext is not None
+
+    @property
+    def has_block_content(self) -> bool:
+        return self.context.block is not None
+
+    @property
+    def mtext_extents(self) -> Tuple[float, float]:
+        """Calculate MTEXT width on demand."""
+
+        if self._dxf_mtext_extents is not None:
+            return self._dxf_mtext_extents
+        if self.dxf_mtext_entity is not None:
+            # TODO: this is very inaccurate if using inline codes, better
+            #  solution is required like a text layout engine with column width
+            #  calculation from the MTEXT content.
+            width, height = estimate_mtext_extents(self.dxf_mtext_entity)
+        else:
+            width, height = 0.0, 0.0
+        self._dxf_mtext_extents = (width, height)
+        return self._dxf_mtext_extents
 
     def run(self) -> List["DXFGraphic"]:
         """Entry point to render MLEADER entities."""
@@ -337,7 +379,9 @@ class RenderEngine:
     def leader_line_attribs(self, raw_color: int = None) -> Dict:
         aci_color = self.leader_aci_color
         true_color = self.leader_true_color
-        if raw_color is not None:
+
+        # Ignore color override value BYBLOCK!
+        if raw_color and raw_color is not colors.BY_BLOCK_RAW_VALUE:
             aci_color, true_color = decode_raw_color(raw_color)
 
         attribs = {
@@ -352,9 +396,9 @@ class RenderEngine:
 
     def add_content(self) -> None:
         # also check self.style.get("content_type") ?
-        if self.context.mtext is not None:
+        if self.has_text_content:
             self.add_mtext_content()
-        elif self.context.block is not None:
+        elif self.has_block_content:
             self.add_block_content()
 
     def add_mtext_content(self) -> None:
@@ -369,10 +413,17 @@ class RenderEngine:
                 set_mtext_bg_fill(mtext, mtext_data)
             set_mtext_columns(mtext, mtext_data, self.scale)
         self.entities.append(mtext)
+        self.dxf_mtext_entity = mtext
+
         if self.has_text_frame:
             self.add_text_frame()
 
     def add_text_frame(self) -> None:
+        # not supported - yet?
+        # 1. This requires a full MTEXT height calculation.
+        # 2. Only the default rectangle and the rounded rectangle are
+        #    acceptable every other text frame is just ugly, especially
+        #    when the MTEXT gets more complex.
         pass
 
     def add_block_content(self) -> None:
@@ -424,22 +475,85 @@ class RenderEngine:
             return
 
         for leader in self.context.leaders:
-            if (
-                self.leader_type == 1  # straight lines
-                and self.has_dogleg
-                and self.has_horizontal_attachment
-            ):
-                self.add_dogleg(leader)
             for line in leader.lines:
                 self.add_leader_line(leader, line)
 
-    def add_dogleg(self, leader: "LeaderData"):
-        # All leader vertices and directions in WCS!
-        start_point = leader.last_leader_point
-        end_point = start_point + leader.dogleg_vector.normalize(
-            leader.dogleg_length
-        )
-        self.add_dxf_line(start_point, end_point)
+            if self.has_text_content:
+                if leader.has_horizontal_attachment:
+                    # add text underlines for these horizontal attachment styles:
+                    # 5 = bottom of bottom text line & underline bottom text line
+                    # 6 = bottom of top text line & underline top text line
+                    self.add_text_underline(leader)
+                else:
+                    # text with vertical attachment may have an extra "overline"
+                    # across the text
+                    self.add_overline(leader)
+
+    def add_text_underline(self, leader: "LeaderData"):
+        mtext = self.context.mtext
+        if mtext is None:
+            return
+        has_left_underline = self.left_attachment_type in (5, 6)
+        has_right_underline = self.right_attachment_type in (5, 6)
+        if not (has_left_underline or has_right_underline):
+            return
+        connection_point = leader.last_leader_point + _get_dogleg_vector(leader)
+        width, height = self.mtext_extents
+        length = width + self.context.landing_gap_size
+        if length < 1e-9:
+            return
+        # The connection point is on the "left" or "right" side of the
+        # detection line, which is a "vertical" line through the text
+        # insertion point.
+        start = mtext.insert
+        if self.ocs is None:  # text plane is parallel to the xy-plane
+            start2d = start.vec2
+            up2d = mtext.text_direction.vec2.orthogonal()
+            cp2d = connection_point.vec2
+        else:  # project points into the text plane
+            from_wcs = self.ocs.from_wcs
+            start2d = Vec2(from_wcs(start))
+            up2d = Vec2(from_wcs(mtext.text_direction)).orthogonal()
+            cp2d = Vec2(from_wcs(connection_point))
+        is_left = is_point_left_of_line(cp2d, start2d, start2d + up2d)
+        is_right = not is_left
+        line = mtext.text_direction.normalize(length if is_left else -length)
+        if (is_left and has_left_underline) or (
+            is_right and has_right_underline
+        ):
+            self.add_dxf_line(connection_point, connection_point + line)
+
+    def add_overline(self, leader: "LeaderData"):
+        mtext = self.context.mtext
+        if mtext is None:
+            return
+        has_bottom_line = self.bottom_attachment_type == 10
+        has_top_line = self.top_attachment_type == 10
+        if not (has_bottom_line or has_top_line):
+            return
+        length, height = self.mtext_extents
+        if length < 1e-9:
+            return
+
+        # The end of the leader is the center of the "overline".
+        # The leader is on the bottom of the text if the insertion
+        # point of the text is left of "overline" (start -> end).
+        center = leader.last_leader_point
+        insert = mtext.insert
+        line2 = mtext.text_direction.normalize(length / 2)
+        start = center - line2
+        end = center + line2
+
+        if self.ocs is None:  # z-axis is ignored
+            bottom = is_point_left_of_line(insert, start, end)
+        else:  # project points into the text plane, z-axis is ignored
+            from_wcs = self.ocs.from_wcs
+            bottom = is_point_left_of_line(
+                from_wcs(insert), from_wcs(start), from_wcs(end)
+            )
+        top = not bottom
+        if (bottom and has_bottom_line) or (top and has_top_line):
+            self.add_dxf_line(start, end)
 
     def leader_vertices(
         self, leader: "LeaderData", line_vertices: List[Vec3], has_dogleg=False
@@ -447,7 +561,7 @@ class RenderEngine:
         # All leader vertices and directions in WCS!
         vertices = list(line_vertices)
         end_point = leader.last_leader_point
-        if self.has_horizontal_attachment:
+        if leader.has_horizontal_attachment:
             if has_dogleg:
                 vertices.append(end_point)
             vertices.append(end_point + _get_dogleg_vector(leader))
@@ -489,7 +603,7 @@ class RenderEngine:
             for s, e in zip(vertices, vertices[1:]):
                 self.add_dxf_line(s, e, raw_color)
         elif leader_type == 2:  # add spline
-            if self.has_horizontal_attachment:
+            if leader.has_horizontal_attachment:
                 end_tangent = _get_dogleg_vector(leader)
             else:
                 end_tangent = vertices[-1] - vertices[-2]

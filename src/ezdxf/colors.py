@@ -1,6 +1,7 @@
 #  Copyright (c) 2020-2021, Manfred Moitzi
 #  License: MIT License
 from typing import Tuple, Union
+from enum import IntEnum
 import math
 
 RGB = Tuple[int, int, int]
@@ -16,6 +17,21 @@ BLUE = 5
 MAGENTA = 6
 BLACK = 7
 WHITE = 7
+
+
+class ACI(IntEnum):
+    BYBLOCK = 0
+    BYLAYER = 256
+    BYOBJECT = 257
+    RED = 1
+    YELLOW = 2
+    GREEN = 3
+    CYAN = 4
+    BLUE = 5
+    MAGENTA = 6
+    BLACK = 7
+    WHITE = 7
+
 
 # Flags for raw color int values:
 # Take color from layer, ignore other bytes.
@@ -43,8 +59,7 @@ def decode_raw_color(value: int) -> Tuple[int, Union[int, RGB]]:
 
 
 def decode_raw_color_int(value: int) -> Tuple[int, int]:
-    """Returns tuple(type, int), the true color value is a 24-bit int value.
-    """
+    """Returns tuple(type, int), the true color value is a 24-bit int value."""
     flags = (value >> 24) & 0xFF
     if flags == COLOR_TYPE_BY_BLOCK:
         return COLOR_TYPE_BY_BLOCK, BYBLOCK
@@ -79,6 +94,19 @@ def encode_raw_color(value: Union[int, RGB]) -> int:
         return -(-((COLOR_TYPE_RGB << 24) + rgb2int(value)) & 0xFFFFFFFF)
 
 
+TRANSPARENCY_BYBLOCK = 0x1000000
+OPAQUE = 0x20000FF
+TRANSPARENCY_10 = 0x20000E5
+TRANSPARENCY_20 = 0x20000CC
+TRANSPARENCY_30 = 0x20000B2
+TRANSPARENCY_40 = 0x2000099
+TRANSPARENCY_50 = 0x200007F
+TRANSPARENCY_60 = 0x2000066
+TRANSPARENCY_70 = 0x200004C
+TRANSPARENCY_80 = 0x2000032
+TRANSPARENCY_90 = 0x2000019
+
+
 def float2transparency(value: float) -> int:
     """
     Returns DXF transparency value as integer in the range from 0 to 255,
@@ -102,8 +130,9 @@ def transparency2float(value: int) -> float:
             for opaque
 
     """
-    # 255 -> 0.
-    # 0 -> 1.
+    # Transparency value 0x020000TT 0 = fully transparent / 255 = opaque
+    # 255 -> 0.0
+    # 0 -> 1.0
     return 1.0 - float(int(value) & 0xFF) / 255.0
 
 

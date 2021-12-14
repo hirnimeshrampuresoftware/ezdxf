@@ -2,12 +2,16 @@
 News
 ====
 
-Version 0.17.2b1 - dev
+Version 0.17.2b2 - dev
 ----------------------
 
+- NEW: Auditor fixes invalid transparency values
+- NEW: add `transparency` argument to `LayerTable.add()`
+- NEW: support for transparency BYLAYER and BYBLOCK for the `drawing` add-on
+- NEW: `Textstyle.make_font()` returns the ezdxf font abstraction
 - BUGFIX: flattening issues #574 in Path() and ConstructionEllipse() 
 - BUGFIX: `drawing` add-on shows block references in `ACAD_TABLE` at the 
-  correct location  
+  correct location
 - PREVIEW: arc length dimension rendering support, new factory methods: 
   `add_arc_dim_3p()`, `add_arc_dim_cra()`, `add_arc_dim_arc()`
 - PREVIEW: ordinate dimension rendering support, new factory methods: 

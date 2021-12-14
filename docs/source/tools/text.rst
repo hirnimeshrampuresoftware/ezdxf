@@ -130,3 +130,9 @@ Functions
 .. autofunction:: is_upside_down_text_angle
 
 .. autofunction:: upright_text_angle
+
+.. autofunction:: estimate_mtext_extents
+
+.. autofunction:: estimate_mtext_content_extents
+
+.. autofunction:: leading

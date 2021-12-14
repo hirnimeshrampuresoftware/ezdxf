@@ -123,21 +123,17 @@ acdb_mleader = DefSubclass(
         "text_style_handle": DXFAttr(343),
         "text_left_attachment_type": DXFAttr(173, default=1),
         # Values 0-8 are used for the left/right attachment
-        # point (attachment direction is horizontal), values 9-10 are used for the
-        # top/bottom attachment points (attachment direction is vertical).
+        # point (attachment direction is horizontal)
         # Attachment point is:
-        # 0 = top of top text line,
-        # 1 = middle of top text line,
-        # 2 = middle of text,
-        # 3 = middle of bottom text line,
-        # 4 = bottom of bottom text line,
-        # 5 = bottom text line,
-        # 6 = bottom of top text line. Underline bottom line
-        # 7 = bottom of top text line. Underline top line,
-        # 8 = bottom of top text line. Underline all content,
-        # 9 = center of text (y-coordinate only),
-        # 10 = center of text (y-coordinate only), and overline top/underline
-        # bottom content.
+        # 0 = top of top text line
+        # 1 = middle of top text line
+        # 2 = middle of whole text
+        # 3 = middle of bottom text line
+        # 4 = bottom of bottom text line
+        # 5 = bottom of bottom text line & underline bottom text line
+        # 6 = bottom of top text line & underline top text line
+        # 7 = bottom of top text line
+        # 8 = bottom of top text line & underline all text lines
         "text_right_attachment_type": DXFAttr(95),  # like 173
         "text_angle_type": DXFAttr(174, default=1),
         # 0 = text angle is equal to last leader line segment angle
@@ -146,7 +142,7 @@ acdb_mleader = DefSubclass(
         #     rotated by 180 degrees so the right side is up for readability.
         "text_alignment_type": DXFAttr(175, default=2),
         "text_color": DXFAttr(92, default=colors.BY_BLOCK_RAW_VALUE),
-        "has_frame_text": DXFAttr(292, default=0),
+        "has_text_frame": DXFAttr(292, default=0),
         # Block Content:
         "block_record_handle": DXFAttr(344),
         "block_color": DXFAttr(
@@ -182,30 +178,46 @@ acdb_mleader = DefSubclass(
         # 2 = center
         # 3 = right
         "scale": DXFAttr(45, default=1, dxfversion=const.DXF2007),
-        "text_attachment_direction": DXFAttr(
-            271, default=0, dxfversion=const.DXF2010
-        ),
+
         # This defines whether the leaders attach to the left/right of the content
         # block/text, or attach to the top/bottom:
         # 0 = horizontal
         # 1 = vertical
-        "text_bottom_attachment_direction": DXFAttr(
-            272, default=9, dxfversion=const.DXF2010
+        "text_attachment_direction": DXFAttr(
+            271, default=0, dxfversion=const.DXF2010
         ),
+
         # like 173, but
         # 9 = center
         # 10= underline and center
-        "text_top_attachment_direction": DXFAttr(
-            273, default=9, dxfversion=const.DXF2010
+        "text_bottom_attachment_type": DXFAttr(
+            272, default=9, dxfversion=const.DXF2010
         ),
+
         # like 173, but
         # 9 = center
         # 10= overline and center
+        "text_top_attachment_type": DXFAttr(
+            273, default=9, dxfversion=const.DXF2010
+        ),
         "leader_extend_to_text": DXFAttr(
             295, default=0, dxfversion=const.DXF2013
         ),
     },
 )
+# The text frame shape is stored in XDATA except for the default rectangle:
+# 1001 ACAD
+# 1070 <type>
+# 2 = rounded rectangle
+# 3 = parallelogram
+# 4 = triangle
+# 5 = square
+# 6 = pentagon
+# 7 = hexagon
+# 8 = octagon
+# 9 = circle
+# 10= ellipse
+
 acdb_mleader_group_codes = group_code_mapping(acdb_mleader)
 CONTEXT_STR = "CONTEXT_DATA{"
 LEADER_STR = "LEADER{"
@@ -429,7 +441,7 @@ class MultiLeader(DXFGraphic):
         write_tag2(174, dxf.text_angle_type)
         write_tag2(175, dxf.text_alignment_type)
         write_tag2(92, dxf.text_color)
-        write_tag2(292, dxf.has_frame_text)
+        write_tag2(292, dxf.has_text_frame)
 
         write_handle_if_exist(344, "block_record_handle")
         write_tag2(93, dxf.block_color)
@@ -447,8 +459,8 @@ class MultiLeader(DXFGraphic):
 
         if version >= const.DXF2010:
             write_tag2(271, dxf.text_attachment_direction)
-            write_tag2(272, dxf.text_bottom_attachment_direction)
-            write_tag2(273, dxf.text_top_attachment_direction)
+            write_tag2(272, dxf.text_bottom_attachment_type)
+            write_tag2(273, dxf.text_top_attachment_type)
 
         if version >= const.DXF2013:
             write_tag2(295, dxf.leader_extend_to_text)
@@ -821,8 +833,14 @@ class LeaderData:
         self.dogleg_vector: Vec3 = X_AXIS  # group code (11, 21, 31) in WCS
         self.dogleg_length: float = 1.0  # group code 40
         self.index: int = 0  # group code 90
-        self.attachment_direction: int = 0  # group code 271, R21010+
+
+        # 0=horizontal; 1=vertical
+        self.attachment_direction: int = 0  # group code 271, R2010+
         self.breaks = []  # group code 12, 13 - multiple breaks possible!
+
+    @property
+    def has_horizontal_attachment(self) -> bool:
+        return not bool(self.attachment_direction)
 
     @classmethod
     def load(cls, context: List[Union["DXFTag", List]]):
@@ -839,7 +857,7 @@ class LeaderData:
             elif code == 291:
                 leader.has_dogleg_vector = value
             elif code == 10:
-                leader.last_leader_point = value
+                leader.last_leader_point = Vec3(value)
             elif code == 11:
                 leader.dogleg_vector = Vec3(value)
             elif code == 40:
@@ -971,7 +989,7 @@ acdb_mleader_style = DefSubclass(
         "text_right_attachment_type": DXFAttr(178, default=1),
         "text_color": DXFAttr(93, default=colors.BY_BLOCK_RAW_VALUE),
         "char_height": DXFAttr(45, default=4),
-        "has_frame_text": DXFAttr(292, default=0),
+        "has_text_frame": DXFAttr(292, default=0),
         "text_align_always_left": DXFAttr(297, default=0),
         "align_space": DXFAttr(46, default=4),
         "has_block_scaling": DXFAttr(293),
@@ -990,9 +1008,9 @@ acdb_mleader_style = DefSubclass(
         # 0 = Horizontal; 1 = Vertical:
         "text_attachment_direction": DXFAttr(271, default=0),
         # 9 = Center; 10 = Underline and Center:
-        "text_bottom_attachment_direction": DXFAttr(272, default=9),
+        "text_bottom_attachment_type": DXFAttr(272, default=9),
         # 9 = Center; 10 = Overline and Center:
-        "text_top_attachment_direction": DXFAttr(273, default=9),
+        "text_top_attachment_type": DXFAttr(273, default=9),
         "unknown2": DXFAttr(298, optional=True),  # boolean flag ?
     },
 )

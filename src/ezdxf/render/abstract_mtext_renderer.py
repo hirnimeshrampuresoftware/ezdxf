@@ -5,7 +5,7 @@
 # ezdxf.tools.text_layout and a concrete MTEXT renderer implementation like
 # MTextExplode or ComplexMTextRenderer.
 
-from typing import List, Sequence, Dict, Tuple, Optional
+from typing import List, Sequence, Dict, Tuple, Optional, cast
 import abc
 from ezdxf.lldxf import const
 from ezdxf.entities.mtext import MText, MTextColumns
@@ -17,6 +17,7 @@ from ezdxf.tools.text import (
     MTextParagraphAlignment,
     ParagraphProperties,
     AbstractFont,
+    estimate_mtext_extents,
 )
 
 __all__ = ["AbstractMTextRenderer"]
@@ -145,11 +146,9 @@ def super_glue():
 
 
 def defined_width(mtext: MText) -> float:
-    width = mtext.dxf.get("width", 0.0)  # optional without default value
-    if width < 1e-6:  # no defined width
-        content = mtext.plain_text(split=True, fast=True)
-        max_line_length = max(len(t) for t in content)
-        width = max_line_length * mtext.dxf.char_height
+    width = mtext.dxf.get("width", 0.0)
+    if width < 1e-6:
+        width, height = estimate_mtext_extents(mtext)
     return width
 
 
