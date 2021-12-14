@@ -34,7 +34,11 @@ jobs:
           python-versions: 'cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310'
           build-requirements: 'cython' 
         # if true then github actions won't stop even if build for this job fails
-        continue-on-error: true        
+        continue-on-error: true
+      - name: Upload binary wheels
+        run: |
+          pip install twine
+          twine upload dist/*        
 
   # Deploy source distribution
   Source-dist:
