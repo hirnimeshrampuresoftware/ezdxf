@@ -39,9 +39,6 @@ jobs:
         if: ${{ matrix.platform == 'aarch64' }}
         run: |
           pip install twine
-          pwd
-          cd dist
-          ls
           twine upload dist/*manylinux2014_aarch64.whl
 
   # Deploy source distribution
